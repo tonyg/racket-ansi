@@ -16,14 +16,14 @@
 						  (system-library-subpath)))
     (define shared-object-target (build-path shared-object-target-path
 					     (append-extension-suffix "tty-raw-extension")))
-    (when (not (file-exists? shared-object-target))
-      (define c-source (build-path private-path "tty-raw-extension.c"))
-      (define object (build-path shared-object-target-path "tty-raw-extension.o"))
-      (make-directory* shared-object-target-path)
-      (compile-extension #f ;; not quiet
-                         c-source
-                         object
-                         '())
-      (link-extension #f ;; not quiet
-                      (list object)
-                      shared-object-target))))
+    (when (file-exists? shared-object-target) (delete-file shared-object-target))
+    (define c-source (build-path private-path "tty-raw-extension.c"))
+    (define object (build-path shared-object-target-path "tty-raw-extension.o"))
+    (make-directory* shared-object-target-path)
+    (compile-extension #f ;; not quiet
+                       c-source
+                       object
+                       '())
+    (link-extension #f ;; not quiet
+                    (list object)
+                    shared-object-target)))
