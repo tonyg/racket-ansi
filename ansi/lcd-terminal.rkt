@@ -5,17 +5,30 @@
          (struct-out unknown-escape-sequence)
          (struct-out position-report)
          add-modifier
-         lex-lcd-input)
+         lex-lcd-input
+         lcd-terminal-utf-8?
+         lcd-terminal-basic-x11-mouse-support?)
 
 (require racket/set)
 (require racket/match)
 (require (only-in racket/string string-split))
 
 (define lcd-terminal-utf-8? (make-parameter #t))
+(define lcd-terminal-basic-x11-mouse-support?
+  (make-parameter
+   (match (getenv "TERM")
+     [(pregexp #px"^st-.*") #f]
+     ;; ^ basic mouse events OVERLAP with control-delete in st!
+     ;; This isn't a problem for SGR mouse event reports, though.
+     [_ #t])))
 
 (struct unknown-escape-sequence (string) #:prefab)
 (struct key (value modifiers) #:prefab)
 (struct position-report (row column) #:prefab)
+
+(struct any-mouse-event () #:prefab)
+(struct mouse-focus-event any-mouse-event (focus-in?) #:prefab)
+(struct mouse-event any-mouse-event (type button row column modifiers) #:prefab)
 
 (define (simple-key value) (key value (set)))
 (define (S- value) (key value (set 'shift)))
@@ -78,12 +91,14 @@
     ["F" (decode-shifting params 'end)]
     ["G" (decode-shifting params 'begin)] ;; linux console (!)
     ["H" (decode-shifting params 'home)]
+    ["I" (mouse-focus-event #t)]
     ["J" #:when (equal? params '(2)) (S- 'home)] ;; st, http://st.suckless.org/
     ["J" #:when (not params) (C- 'end)] ;; st, http://st.suckless.org/
     ["K" #:when (equal? params '(2)) (S- 'delete)] ;; st, http://st.suckless.org/
     ["K" #:when (not params) (S- 'end)] ;; st, http://st.suckless.org/
     ["L" (C- 'insert)]                  ;; st, http://st.suckless.org/
-    ["M" (C- 'delete)]                  ;; st, http://st.suckless.org/
+    ["M" (C- 'delete)]                  ;; st, http://st.suckless.org/. Overlaps with mouse events!
+    ["O" (mouse-focus-event #f)]
     ["P" #:when (not params) (simple-key 'delete)] ;; st, http://st.suckless.org/
     ["P" (decode-shifting params 'f1)]
     ["Q" (decode-shifting params 'f2)]
@@ -145,9 +160,78 @@
    [(<= #x20 b #x7e) (simple-key (integer->char b))]
    [(= b #x7f) (simple-key 'backspace)]))
 
-(define (lex-lcd-input port #:utf-8? [utf-8? (lcd-terminal-utf-8?)])
+(define (decode-mouse-event-type type)
+  (define type-code (arithmetic-shift type -5))
+  (define modifier-code (bitwise-and (arithmetic-shift type -2) 7))
+  (define modifiers
+    (set-union (if (zero? (bitwise-and modifier-code 1)) (set) (set 'shift))
+               (if (zero? (bitwise-and modifier-code 2)) (set) (set 'super))
+               (if (zero? (bitwise-and modifier-code 4)) (set) (set 'control))))
+  (define button (bitwise-and type 3))
+  (match type-code
+    [1 ;; Press or release
+     (if (= button 3) ;; basic events don't distinguish specific release buttons
+         (values 'release-all modifiers #f)
+         (values 'press modifiers (+ button 1)))]
+    [2 ;; Motion
+     (values 'motion modifiers (if (= button 3) #f (+ button 1)))]
+    [3 ;; Scroll (really, press events for buttons 4, 5)
+     (values 'scroll modifiers (+ button 4))]
+    [_
+     (values #f modifiers (+ button 1))]))
+
+(define (decode-basic-mouse-event lexeme event-bytes)
+  (define-values (type modifiers button) (decode-mouse-event-type (bytes-ref event-bytes 0)))
+  (define x-raw (bytes-ref event-bytes 1))
+  (define y-raw (bytes-ref event-bytes 2))
+  ;; Very large terminals (more than 256-32=224 columns/rows) report 0
+  ;; for a column/row position when the mouse is to the right of the
+  ;; maximum representable position. We report #f in these cases.
+  (define x (if (zero? x-raw) #f (- x-raw 32)))
+  (define y (if (zero? y-raw) #f (- y-raw 32)))
+  (if (not type)
+      (simple-key (unknown-escape-sequence lexeme))
+      (mouse-event type button x y modifiers)))
+
+(define (decode-extended-mouse-event lexeme type-byte x y release? input-next)
+  (define-values (type modifiers button) (decode-mouse-event-type (+ type-byte 32)))
+  (cond
+    [(not type)
+     (simple-key (unknown-escape-sequence lexeme))]
+    [(eq? type 'release-all) ;; This is one of the things the extended format can do better!
+     (mouse-event 'release button x y modifiers)]
+    [(eq? type 'press)
+     (mouse-event (if release? 'release 'press) button x y modifiers)]
+    [release?
+     ;; Ignore the event -- it's likely a spurious "scroll" release event from st
+     (input-next)]
+    [else
+     (mouse-event type button x y modifiers)]))
+
+(define (lex-lcd-input port
+                       #:utf-8? [utf-8? (lcd-terminal-utf-8?)]
+                       #:basic-x11-mouse-support? [basic-x11-mouse-support?
+                                                   (lcd-terminal-basic-x11-mouse-support?)])
   (cond
    [(eof-object? (peek-byte port)) eof]
+   [(regexp-try-match #px#"^\e\\[<([0-9]+);([0-9]+);([0-9]+)(m|M)" port) =>
+    (lambda (match-result)
+      (match-define (list lexeme type row column kind) match-result)
+      (decode-extended-mouse-event lexeme
+                                   (string->number (bytes->string/utf-8 type))
+                                   (string->number (bytes->string/utf-8 row))
+                                   (string->number (bytes->string/utf-8 column))
+                                   (match kind [#"m" #t] [#"M" #f])
+                                   (lambda ()
+                                     (lex-lcd-input port
+                                                    #:utf-8? utf-8?
+                                                    #:basic-x11-mouse-support?
+                                                      basic-x11-mouse-support?))))]
+   [(and basic-x11-mouse-support?
+         (regexp-try-match #px#"^\e\\[M(...)" port)) =>
+    (lambda (match-result)
+      (match-define (list lexeme mouse-event-bytes) match-result)
+      (decode-basic-mouse-event lexeme mouse-event-bytes))]
    [(or (regexp-try-match #px"^\e\\[([0-9]+(;[0-9]+)*)?(.)" port)
         (regexp-try-match #px#"^\x9b([0-9]+(;[0-9]+)*)?(.)" port)) =>
     (lambda (match-result)

@@ -17,10 +17,18 @@
 
   (plumber-add-flush! (current-plumber)
                       (lambda (handle)
-                        (display (reset-mode x11-any-event-mouse-tracking-mode))))
+                        (for-each display
+                                  (list
+                                   (reset-mode x11-extended-mouse-tracking-mode)
+                                   (reset-mode x11-any-event-mouse-tracking-mode)
+                                   (reset-mode x11-focus-event-mode)
+                                   ))))
 
-  ;; lcd-terminal isn't bright enough to parse mouse events yet, so this is disabled for now
-  ;; (for-each display (list (set-mode x11-any-event-mouse-tracking-mode)))
+  (for-each display (list
+                     (set-mode x11-focus-event-mode)
+                     (set-mode x11-any-event-mouse-tracking-mode)
+                     (set-mode x11-extended-mouse-tracking-mode)
+                     ))
 
   (display "Type keys. Press control-D to exit.\r\n")
   (let loop ()

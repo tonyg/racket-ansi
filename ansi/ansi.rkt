@@ -423,6 +423,8 @@
 (define x11-hilite-mouse-tracking-mode "?1001")
 (define x11-button-event-mouse-tracking-mode "?1002")
 (define x11-any-event-mouse-tracking-mode "?1003")
+(define x11-focus-event-mode "?1004") ;; Send FocusIn/FocusOut events
+(define x11-extended-mouse-tracking-mode "?1006") ;; "SGR" mode
 (define alternate-screen-buffer-mode "?1047")
 (define save/restore-cursor-pseudomode "?1048")
 (define save/restore-cursor-and-alternate-screen-buffer-pseudomode "?1049")
