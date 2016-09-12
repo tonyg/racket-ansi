@@ -2,6 +2,9 @@
 ;; Lowest Common Denominator terminal.
 
 (provide (struct-out key)
+         (struct-out any-mouse-event)
+         (struct-out mouse-focus-event)
+         (struct-out mouse-event)
          (struct-out unknown-escape-sequence)
          (struct-out position-report)
          add-modifier
