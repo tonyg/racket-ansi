@@ -13,7 +13,9 @@
 static int is_raw = 0;
 static struct termios saved;
 
-static int ttyraw(void) {
+static int ttyraw(void)
+  XFORM_SKIP_PROC
+{
   /* Based on the settings given in http://www.minek.com/files/unix_examples/raw.html */
   struct termios t;
 
@@ -35,8 +37,10 @@ static int ttyraw(void) {
   is_raw = 1;
   return 0;
 }
-	
-static int ttyrestore(void) {
+
+static int ttyrestore(void)
+  XFORM_SKIP_PROC
+{
   if (!is_raw) return 0;
 
   if (tcsetattr(STDIN_FD, TCSAFLUSH, &saved) < 0) return -1;
@@ -46,11 +50,15 @@ static int ttyrestore(void) {
 }
 
 static Scheme_Object *sch_ttyraw(int argc, Scheme_Object **argv) {
-  return ttyraw() == 0 ? scheme_true : scheme_false;
+  int result;
+  result = ttyraw();
+  return result == 0 ? scheme_true : scheme_false;
 }
 
 static Scheme_Object *sch_ttyrestore(int argc, Scheme_Object **argv) {
-  return ttyrestore() == 0 ? scheme_true : scheme_false;
+  int result;
+  result = ttyrestore();
+  return result == 0 ? scheme_true : scheme_false;
 }
 
 Scheme_Object *scheme_reload(Scheme_Env *env) {
@@ -66,7 +74,9 @@ Scheme_Object *scheme_reload(Scheme_Env *env) {
   return scheme_void;
 }
 
-Scheme_Object *scheme_initialize(Scheme_Env *env) {
+Scheme_Object *scheme_initialize(Scheme_Env *env)
+  XFORM_SKIP_PROC
+{
   atexit((void (*)(void)) ttyrestore);
   return scheme_reload(env);
 }

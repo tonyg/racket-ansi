@@ -2,8 +2,8 @@
 
 (require "ansi.rkt"
          "lcd-terminal.rkt"
-         "private/tty-raw-extension")
+         "private/tty-raw-extension.rkt")
 
 (provide (all-from-out "ansi.rkt")
          (all-from-out "lcd-terminal.rkt")
-         (all-from-out "private/tty-raw-extension"))
+         (all-from-out "private/tty-raw-extension.rkt"))

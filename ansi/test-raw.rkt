@@ -1,6 +1,6 @@
 #lang racket/base
 
-(require "private/tty-raw-extension")
+(require "private/tty-raw-extension.rkt")
 (require "main.rkt")
 
 (require racket/set)
