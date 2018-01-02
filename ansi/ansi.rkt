@@ -143,6 +143,8 @@
 
 (define-variable-arity-escape-sequence (define-area-qualification args) CSI args "o")
 
+(define-escape-sequence (device-request-screen-size) CSI "18t")
+
 (define-escape-sequence (scroll-left n) CSI n " @")
 (define-escape-sequence (scroll-right n) CSI n " A")
 
