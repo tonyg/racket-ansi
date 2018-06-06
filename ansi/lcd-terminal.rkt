@@ -1,12 +1,21 @@
 #lang racket/base
 ;; Lowest Common Denominator terminal.
 
+(module+ event-structs
+  (provide (struct-out key)
+           (struct-out any-mouse-event)
+           (struct-out mouse-focus-event)
+           (struct-out mouse-event)
+           (struct-out unknown-escape-sequence)
+           (struct-out position-report)
+           (struct-out screen-size-report)))
 (provide (struct-out key)
          (struct-out any-mouse-event)
          (struct-out mouse-focus-event)
          (struct-out mouse-event)
          (struct-out unknown-escape-sequence)
          (struct-out position-report)
+         (struct-out screen-size-report)
          add-modifier
          lex-lcd-input
          lcd-terminal-utf-8?
@@ -28,6 +37,7 @@
 (struct unknown-escape-sequence (string) #:prefab)
 (struct key (value modifiers) #:prefab)
 (struct position-report (row column) #:prefab)
+(struct screen-size-report (rows columns) #:prefab)
 
 (struct any-mouse-event () #:prefab)
 (struct mouse-focus-event any-mouse-event (focus-in?) #:prefab)
@@ -63,22 +73,23 @@
     [_ (simple-key (unknown-escape-sequence lexeme))]))
 
 (define (analyze-vt-tildeish-key* lexeme ctor a b)
-  (decode-shifting-number b
-                          (match a
-                            [1 (ctor 'home)] ;; linux console
-                            [2 (ctor 'insert)]
-                            [3 (ctor 'delete)]
-                            [4 (ctor 'end)] ;; linux console
-                            [5 (ctor 'page-up)]
-                            [6 (ctor 'page-down)]
-                            [7 (ctor 'home)]
-                            [8 (ctor 'end)]
-                            [11 (ctor 'f1)] [12 (ctor 'f2)] [13 (ctor 'f3)] [14 (ctor 'f4)]
-                            [15 (ctor 'f5)] [17 (ctor 'f6)] [18 (ctor 'f7)] [19 (ctor 'f8)]
-                            [20 (ctor 'f9)] [21 (ctor 'f10)] [23 (ctor 'f11)] [24 (ctor 'f12)]
-                            [25 (ctor 'f13)] [26 (ctor 'f14)] [28 (ctor 'f15)] [29 (ctor 'f16)]
-                            [31 (ctor 'f17)] [32 (ctor 'f18)] [33 (ctor 'f19)] [34 (ctor 'f20)]
-                            [_ (simple-key (unknown-escape-sequence lexeme))])))
+  (decode-shifting-number
+   b
+   (match a
+     [1 (ctor 'home)] ;; linux console
+     [2 (ctor 'insert)]
+     [3 (ctor 'delete)]
+     [4 (ctor 'end)] ;; linux console
+     [5 (ctor 'page-up)]
+     [6 (ctor 'page-down)]
+     [7 (ctor 'home)]
+     [8 (ctor 'end)]
+     [11 (ctor 'f1)] [12 (ctor 'f2)] [13 (ctor 'f3)] [14 (ctor 'f4)]
+     [15 (ctor 'f5)] [17 (ctor 'f6)] [18 (ctor 'f7)] [19 (ctor 'f8)]
+     [20 (ctor 'f9)] [21 (ctor 'f10)] [23 (ctor 'f11)] [24 (ctor 'f12)]
+     [25 (ctor 'f13)] [26 (ctor 'f14)] [28 (ctor 'f15)] [29 (ctor 'f16)]
+     [31 (ctor 'f17)] [32 (ctor 'f18)] [33 (ctor 'f19)] [34 (ctor 'f20)]
+     [_ (simple-key (unknown-escape-sequence lexeme))])))
 
 (define (analyze-vt-bracket-key lexeme params mainchar)
   (match mainchar
@@ -105,7 +116,8 @@
     ["P" #:when (not params) (simple-key 'delete)] ;; st, http://st.suckless.org/
     ["P" (decode-shifting params 'f1)]
     ["Q" (decode-shifting params 'f2)]
-    ["R" #:when (and (= (length params) 2) (> (car params) 1)) (apply position-report params)]
+    ["R" #:when (and (= (length params) 2) (> (car params) 1))
+         (apply position-report params)]
     ["R" (decode-shifting params 'f3)]
     ["S" (decode-shifting params 'f4)]
     ["Z" (C-S- #\I)] ;; TODO: should this instead be a 'backtab key?
@@ -114,6 +126,7 @@
     ["c" (S- 'right)]
     ["d" (S- 'left)]
     ["h" #:when (equal? params '(4)) (simple-key 'insert)] ;; st, http://st.suckless.org/
+    ["t" #:when (equal? (car params) 8) (apply screen-size-report (cdr params))]
     [_ (simple-key (unknown-escape-sequence lexeme))]))
 
 (define (analyze-vt-O-mainchar lexeme mainchar)
@@ -239,15 +252,17 @@
         (regexp-try-match #px#"^\x9b([0-9]+(;[0-9]+)*)?(.)" port)) =>
     (lambda (match-result)
       (match-define (list lexeme parambytes _ mainbytes) match-result)
-      (define params (and parambytes
-                          (map string->number (string-split (bytes->string/utf-8 parambytes) ";"))))
+      (define params
+        (and parambytes
+             (map string->number (string-split (bytes->string/utf-8 parambytes) ";"))))
       (analyze-vt-bracket-key lexeme params (bytes->string/utf-8 mainbytes)))]
    [(regexp-try-match #px"^\eO([0-9])(.)" port) =>
     ;; screen generates shifting escapes for the keypad like this
     (lambda (match-result)
       (match-define (list lexeme v-plus-one-bytes mainbytes) match-result)
-      (decode-shifting-number (string->number (bytes->string/utf-8 v-plus-one-bytes))
-                              (analyze-vt-O-mainchar lexeme (bytes->string/utf-8 mainbytes))))]
+      (decode-shifting-number
+       (string->number (bytes->string/utf-8 v-plus-one-bytes))
+       (analyze-vt-O-mainchar lexeme (bytes->string/utf-8 mainbytes))))]
    [(regexp-try-match #px"^\eO(.)" port) =>
     (lambda (match-result)
       (match-define (list lexeme mainbytes) match-result)
