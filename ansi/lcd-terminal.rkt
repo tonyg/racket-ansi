@@ -126,7 +126,8 @@
     ["c" (S- 'right)]
     ["d" (S- 'left)]
     ["h" #:when (equal? params '(4)) (simple-key 'insert)] ;; st, http://st.suckless.org/
-    ["t" #:when (equal? (car params) 8) (apply screen-size-report (cdr params))]
+    ["t" #:when (and (= (length params) 3) (= (car params) 8))
+         (apply screen-size-report (cdr params))]
     [_ (simple-key (unknown-escape-sequence lexeme))]))
 
 (define (analyze-vt-O-mainchar lexeme mainchar)
