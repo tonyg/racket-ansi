@@ -397,6 +397,8 @@
 (define carriage-return/new-line-mode "?40")
 (define non-bidirectional-print-direction-mode "?41")
 (define nat-repl-char "?42") ;; no idea what this might mean
+;; ^ Huh. Per https://vt100.net/docs/vt510-rm/DECNRCM.html, it's
+;; "National Replacement Character Set Mode".
 (define expanded/compressed-print-mode "?43")
 (define print-color/black-and-white-mode "?44")
 (define rgb/hls-print-color-syntax-mode "?45")
