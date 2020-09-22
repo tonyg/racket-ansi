@@ -1,4 +1,4 @@
 #lang setup/infotab
 (define collection 'multi)
-(define deps '("base" "dynext-lib" "make"))
+(define deps '("base" "make" "rktermios"))
 (define build-deps '("rackunit-lib"))
